@@ -1,0 +1,38 @@
+<launch>
+  <!-- Robot IP - change to your actual IP -->
+  <arg name="robot_ip" default="172.16.0.2"/>
+
+  <!-- 1. Franka control driver -->
+  <include file="$(find franka_control)/launch/franka_control.launch">
+    <arg name="robot_ip" value="$(arg robot_ip)"/>
+    <arg name="load_gripper" value="true"/>
+  </include>
+
+  <!-- 2. MoveIt for Panda -->
+  <include file="$(find panda_moveit_config)/launch/panda_moveit.launch">
+    <arg name="load_gripper" value="true"/>
+  </include>
+
+  <!-- 3. RealSense Camera -->
+  <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+    <arg name="align_depth" value="true"/>
+    <arg name="filters" value="pointcloud"/>
+    <arg name="color_width" value="640"/>
+    <arg name="color_height" value="480"/>
+    <arg name="depth_width" value="640"/>
+    <arg name="depth_height" value="480"/>
+    <arg name="color_fps" value="30"/>
+    <arg name="depth_fps" value="30"/>
+  </include>
+
+  <!-- 4. Object Detector -->
+  <node name="object_detector" pkg="panda_pick_rotate"
+        type="object_detector.py" output="screen"/>
+
+  <!-- 5. Pick and Rotate -->
+  <node name="pick_and_rotate" pkg="panda_pick_rotate"
+        type="pick_and_rotate.py" output="screen"/>
+
+  <!-- 6. RViz for visualization -->
+  <node name="rviz" pkg="rviz" type="rviz" output="screen"/>
+</launch>
