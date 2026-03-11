@@ -130,7 +130,7 @@ def main():
 
     # ── Step 5: Grasp ─────────────────────────────────────────────────
     print("\nStep 5: Grasping can...")
-    gripper.close(width=CAN_DIAMETER - 0.005, force=40.0)
+    gripper.close(width=CAN_DIAMETER, force=40.0)
     time.sleep(0.5)
 
     # ── Step 6: Lift ──────────────────────────────────────────────────
@@ -138,24 +138,65 @@ def main():
     fa.goto_pose(make_pose(CAN_X, CAN_Y, LIFT_Z), use_impedance=False)
     time.sleep(0.5)
 
-    # ── Step 7: Move to drop (behind robot) ───────────────────────────
-    print(f"\nStep 7: Moving to drop position "
-          f"({DROP_X:.2f}, {DROP_Y:.2f}, {DROP_Z:.2f}) — behind robot...")
-    fa.goto_pose(make_pose(DROP_X, DROP_Y, DROP_Z), use_impedance=False)
+    # ── Step 7: Rotate base joint 180° to face behind robot ───────────
+    print("\nStep 7: Rotating base joint 180° to face behind robot...")
+    joints = list(fa.get_joints())
+    print(f"  Current joint 1: {np.degrees(joints[0]):.1f}°")
+
+    # Rotate joint 0 by +180 degrees (clamp to joint limits ±166°)
+    target_j0 = joints[0] + np.pi
+    target_j0 = np.clip(target_j0, -2.8973, 2.8973)
+    joints[0]  = target_j0
+    print(f"  Target joint 1:  {np.degrees(target_j0):.1f}°")
+
+    fa.goto_joints(joints, use_impedance=False)
     time.sleep(0.5)
 
-    # ── Step 8: Release ───────────────────────────────────────────────
-    print("\nStep 8: Releasing can...")
+    # ── Step 8: Lower to drop height ─────────────────────────────────
+    # After 180° rotation, the arm faces behind the robot.
+    # We do a small downward Cartesian move to place the can.
+    print(f"\nStep 8: Lowering to drop height Z={DROP_Z:.3f}m...")
+    current = fa.get_pose()
+    drop_pose = RigidTransform(
+        rotation=current.rotation,
+        translation=np.array([
+            current.translation[0],
+            current.translation[1],
+            DROP_Z
+        ]),
+        from_frame='franka_tool',
+        to_frame='world'
+    )
+    fa.goto_pose(drop_pose, use_impedance=False)
+    time.sleep(0.5)
+
+    # ── Step 9: Release ───────────────────────────────────────────────
+    print("\nStep 9: Releasing can...")
     gripper.open(width=0.08)
     time.sleep(0.5)
 
-    # ── Step 9: Home ──────────────────────────────────────────────────
-    print("\nStep 9: Returning home...")
+    # ── Step 10: Lift before rotating back ────────────────────────────
+    print("\nStep 10: Lifting before rotating back...")
+    current = fa.get_pose()
+    lift_back = RigidTransform(
+        rotation=current.rotation,
+        translation=np.array([
+            current.translation[0],
+            current.translation[1],
+            LIFT_Z
+        ]),
+        from_frame='franka_tool',
+        to_frame='world'
+    )
+    fa.goto_pose(lift_back, use_impedance=False)
+    time.sleep(0.5)
+
+    # ── Step 11: Home ─────────────────────────────────────────────────
+    print("\nStep 11: Returning home...")
     fa.reset_joints()
 
     print("\n" + "=" * 55)
     print("  COMPLETE! Can moved behind robot.")
-    print(f"  Drop was at X={DROP_X}, Y={DROP_Y}, Z={DROP_Z}")
     print("=" * 55)
 
 
