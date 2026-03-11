@@ -141,7 +141,8 @@ def main():
     # ── Step 7: Rotate base joint 180° to face behind robot ───────────
     print("\nStep 7: Rotating base joint 180° to face behind robot...")
     joints = list(fa.get_joints())
-    print(f"  Current joint 1: {np.degrees(joints[0]):.1f}°")
+    joints[0] = np.radians(165)  # just within hardware limit
+    fa.goto_joints(joints, use_impedance=False, ignore_virtual_walls=True)
 
     # Rotate joint 0 by +180 degrees (clamp to joint limits ±166°)
     target_j0 = joints[0] + np.pi
