@@ -30,7 +30,7 @@ LIFT_Z  = GRASP_Z + 0.25                 # after picking up
 DROP_Z  = 0.15                           # place height behind robot
 
 # Joint 0 rotation to face behind robot (tested max = 165°)
-ROTATE_BEHIND_DEG = 165.0
+ROTATE_BEHIND_DEG = 65.0
 
 # Gripper namespace
 GRIPPER_NS = '/franka_gripper_1/franka_gripper'
