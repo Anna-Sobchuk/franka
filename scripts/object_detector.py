@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/raicam/franka_project_Anna/venv/bin
 import rospy
 import cv2
 import numpy as np
@@ -20,7 +20,7 @@ class YOLOCanDetector:
         self.fx = self.fy = self.cx = self.cy = None
         self.depth_image = None
         
-        # Can physical dimensions (YOUR cans)
+        # Can physical dimensions
         self.CAN_DIAMETER = 0.075  # 7.5cm
         self.CAN_HEIGHT = 0.11    # 
         
@@ -35,7 +35,7 @@ class YOLOCanDetector:
         self.height_pub = rospy.Publisher('/detected_can/height', Float32, queue_size=1)
         self.debug_pub = rospy.Publisher('/object_detector/yolo_debug', Image, queue_size=1)
         
-        rospy.loginfo("🤖 YOLO Can Detector ready - waiting for camera...")
+        rospy.loginfo("YOLO Can Detector ready - waiting for camera...")
 
     def info_cb(self, msg):
         """Get camera calibration once"""

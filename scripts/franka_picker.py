@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/raicam/franka_project_Anna/venv/bin
 import sys
 import rospy
 import tf2_ros
