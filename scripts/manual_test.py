@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Manual test for Franka Panda using FrankaPy + direct actionlib gripper.
-Gripper uses /franka_gripper_1/franka_gripper/ namespace directly.
+Picks can from in front of robot, rotates 165° to place behind robot.
 
 Run inside Docker:
   python3 ~/franka/scripts/manual_test.py
@@ -14,23 +14,23 @@ from frankapy import FrankaArm
 from franka_gripper.msg import (MoveAction, MoveGoal,
                                 GraspAction, GraspGoal,
                                 GraspEpsilon)
+from sensor_msgs.msg import JointState
 import time
 
 # ── Adjust these to match your actual setup ───────────────────────────────────
 CAN_X        = 0.50   # metres forward from robot base
 CAN_Y        = 0.00   # metres left(+) / right(-)
 CAN_Z_TABLE  = 0.02   # table surface height above robot base
-CAN_HEIGHT   = 0.12   # 11cm tall can
+CAN_HEIGHT   = 0.13   # can height
 CAN_DIAMETER = 0.075  # 7.5cm diameter
 
-GRASP_Z = CAN_Z_TABLE + CAN_HEIGHT / 2   # middle of can ~0.075m
+GRASP_Z = CAN_Z_TABLE + CAN_HEIGHT / 2   # middle of can
 HOVER_Z = GRASP_Z + 0.15                 # 15cm above grasp
 LIFT_Z  = GRASP_Z + 0.25                 # after picking up
+DROP_Z  = 0.15                           # place height behind robot
 
-# Drop position — 50cm BEHIND the robot (negative X)
-DROP_X = -0.50
-DROP_Y =  0.00
-DROP_Z =  0.35   # high enough to clear everything
+# Joint 0 rotation to face behind robot (tested max = 165°)
+ROTATE_BEHIND_DEG = 165.0
 
 # Gripper namespace
 GRIPPER_NS = '/franka_gripper_1/franka_gripper'
@@ -52,9 +52,13 @@ def make_pose(x, y, z):
     )
 
 
-class GripperController:
-    """Direct actionlib gripper control using correct namespace."""
+def get_gripper_width():
+    js = rospy.wait_for_message(
+        f'{GRIPPER_NS}/joint_states', JointState, timeout=5.0)
+    return sum(js.position)
 
+
+class GripperController:
     def __init__(self):
         self.move_client  = actionlib.SimpleActionClient(
             f'{GRIPPER_NS}/move', MoveAction)
@@ -67,25 +71,32 @@ class GripperController:
         print("  Gripper ready!")
 
     def open(self, width=0.08, speed=0.05):
-        """Open gripper to given width (metres)."""
         goal = MoveGoal()
         goal.width = width
         goal.speed = speed
         self.move_client.send_goal(goal)
         self.move_client.wait_for_result(rospy.Duration(10))
-        print(f"  Gripper opened to {width*100:.1f}cm")
+        actual = get_gripper_width()
+        print(f"  Gripper opened — actual: {actual*100:.1f}cm")
 
-    def close(self, width=0.045, speed=0.05, force=40.0):
-        """Close gripper to grasp object."""
+    def close(self):
+        """
+        Close until fingers contact can.
+        width=0.07 (just under 7.5cm can)
+        force=5N  — stops at first contact without crushing
+        epsilon=±5cm — accepts any final width
+        """
         goal = GraspGoal()
-        goal.width   = width
-        goal.speed   = speed
-        goal.force   = force
-        goal.epsilon = GraspEpsilon(inner=0.01, outer=0.01)
+        goal.width   = 0.07
+        goal.speed   = 0.01   # very slow for reliable contact
+        goal.force   = 5.0    # low force — stops at contact
+        goal.epsilon = GraspEpsilon(inner=0.05, outer=0.05)
         self.grasp_client.send_goal(goal)
         self.grasp_client.wait_for_result(rospy.Duration(10))
         result = self.grasp_client.get_result()
-        print(f"  Gripper closed — success: {result.success}")
+        actual = get_gripper_width()
+        print(f"  Gripper closed — success: {result.success}  "
+              f"actual: {actual*100:.1f}cm")
         return result.success
 
 
@@ -101,7 +112,6 @@ def main():
     print("\nConnecting to gripper...")
     gripper = GripperController()
 
-    # Current state
     pose = fa.get_pose()
     print(f"\nCurrent EE position:")
     print(f"  X={pose.translation[0]:.3f}  "
@@ -130,7 +140,7 @@ def main():
 
     # ── Step 5: Grasp ─────────────────────────────────────────────────
     print("\nStep 5: Grasping can...")
-    gripper.close(width=CAN_DIAMETER, force=40.0)
+    gripper.close()
     time.sleep(0.5)
 
     # ── Step 6: Lift ──────────────────────────────────────────────────
@@ -138,25 +148,16 @@ def main():
     fa.goto_pose(make_pose(CAN_X, CAN_Y, LIFT_Z), use_impedance=False)
     time.sleep(0.5)
 
-    # ── Step 7: Rotate base joint 180° to face behind robot ───────────
-    print("\nStep 7: Rotating base joint 180° to face behind robot...")
+    # ── Step 7: Rotate joint 0 to face behind robot ───────────────────
+    print(f"\nStep 7: Rotating {ROTATE_BEHIND_DEG}° to face behind robot...")
     joints = list(fa.get_joints())
-    joints[0] = np.radians(165)  # just within hardware limit
+    joints[0] = np.radians(ROTATE_BEHIND_DEG)
     fa.goto_joints(joints, use_impedance=False, ignore_virtual_walls=True)
-
-    # Rotate joint 0 by +180 degrees (clamp to joint limits ±166°)
-    target_j0 = joints[0] + np.pi
-    target_j0 = np.clip(target_j0, -2.8973, 2.8973)
-    joints[0]  = target_j0
-    print(f"  Target joint 1:  {np.degrees(target_j0):.1f}°")
-
-    fa.goto_joints(joints, use_impedance=False)
     time.sleep(0.5)
+    print(f"  Joint 0 now: {np.degrees(fa.get_joints()[0]):.1f}°")
 
-    # ── Step 8: Lower to drop height ─────────────────────────────────
-    # After 180° rotation, the arm faces behind the robot.
-    # We do a small downward Cartesian move to place the can.
-    print(f"\nStep 8: Lowering to drop height Z={DROP_Z:.3f}m...")
+    # ── Step 8: Lower to place height ────────────────────────────────
+    print(f"\nStep 8: Lowering to place height Z={DROP_Z:.3f}m...")
     current = fa.get_pose()
     drop_pose = RigidTransform(
         rotation=current.rotation,
@@ -168,7 +169,7 @@ def main():
         from_frame='franka_tool',
         to_frame='world'
     )
-    fa.goto_pose(drop_pose, use_impedance=False)
+    fa.goto_pose(drop_pose, use_impedance=False, ignore_virtual_walls=True)
     time.sleep(0.5)
 
     # ── Step 9: Release ───────────────────────────────────────────────
@@ -176,10 +177,10 @@ def main():
     gripper.open(width=0.08)
     time.sleep(0.5)
 
-    # ── Step 10: Lift before rotating back ────────────────────────────
-    print("\nStep 10: Lifting before rotating back...")
+    # ── Step 10: Lift before rotating home ────────────────────────────
+    print(f"\nStep 10: Lifting before rotating home...")
     current = fa.get_pose()
-    lift_back = RigidTransform(
+    lift_pose = RigidTransform(
         rotation=current.rotation,
         translation=np.array([
             current.translation[0],
@@ -189,10 +190,10 @@ def main():
         from_frame='franka_tool',
         to_frame='world'
     )
-    fa.goto_pose(lift_back, use_impedance=False)
+    fa.goto_pose(lift_pose, use_impedance=False, ignore_virtual_walls=True)
     time.sleep(0.5)
 
-    # ── Step 11: Home ─────────────────────────────────────────────────
+    # ── Step 11: Return home ──────────────────────────────────────────
     print("\nStep 11: Returning home...")
     fa.reset_joints()
 
