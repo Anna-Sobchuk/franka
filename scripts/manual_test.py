@@ -1,29 +1,39 @@
 #!/usr/bin/env python3
 """
-Manual test for Franka Panda using FrankaPy.
+Manual test for Franka Panda using FrankaPy + direct actionlib gripper.
+Gripper uses /franka_gripper_1/franka_gripper/ namespace directly.
 
 Run inside Docker:
   python3 ~/franka/scripts/manual_test.py
-  python3 ~/franka/scripts/manual_test.py --skip-gripper   # arm only, no gripper
 """
-import argparse
+import rospy
+import actionlib
 import numpy as np
 from autolab_core import RigidTransform
 from frankapy import FrankaArm
+from franka_gripper.msg import (MoveAction, MoveGoal,
+                                GraspAction, GraspGoal,
+                                GraspEpsilon)
 import time
 
-# ── Adjust these to match your setup ─────────────────────────────────────────
+# ── Adjust these to match your actual setup ───────────────────────────────────
 CAN_X        = 0.50   # metres forward from robot base
 CAN_Y        = 0.00   # metres left(+) / right(-)
 CAN_Z_TABLE  = 0.02   # table surface height above robot base
-CAN_HEIGHT   = 0.11   # can is 11cm tall
-CAN_DIAMETER = 0.075  # can is 7.5cm wide
+CAN_HEIGHT   = 0.12   # 11cm tall can
+CAN_DIAMETER = 0.075  # 7.5cm diameter
 
-GRASP_Z = CAN_Z_TABLE + CAN_HEIGHT / 2   # middle of can
-HOVER_Z = GRASP_Z + 0.15                 # 15cm above grasp point
-LIFT_Z  = GRASP_Z + 0.25                 # after pick
+GRASP_Z = CAN_Z_TABLE + CAN_HEIGHT / 2   # middle of can ~0.075m
+HOVER_Z = GRASP_Z + 0.15                 # 15cm above grasp
+LIFT_Z  = GRASP_Z + 0.25                 # after picking up
 
-DROP_X, DROP_Y, DROP_Z = 0.10, 0.40, 0.20
+# Drop position — 50cm BEHIND the robot (negative X)
+DROP_X = -0.50
+DROP_Y =  0.00
+DROP_Z =  0.35   # high enough to clear everything
+
+# Gripper namespace
+GRIPPER_NS = '/franka_gripper_1/franka_gripper'
 
 # Gripper pointing straight down
 ROTATION_DOWN = np.array([
@@ -42,46 +52,54 @@ def make_pose(x, y, z):
     )
 
 
-def safe_open_gripper(fa, skip=False):
-    if skip:
-        print("  [skipped - arm only mode]")
-        return
-    try:
-        fa.open_gripper(block=False)
-        time.sleep(2.0)  # wait without blocking
-        print(f"  Gripper width: {fa.get_gripper_width()*100:.1f}cm")
-    except Exception as e:
-        print(f"  Gripper open failed: {e} — continuing")
+class GripperController:
+    """Direct actionlib gripper control using correct namespace."""
 
+    def __init__(self):
+        self.move_client  = actionlib.SimpleActionClient(
+            f'{GRIPPER_NS}/move', MoveAction)
+        self.grasp_client = actionlib.SimpleActionClient(
+            f'{GRIPPER_NS}/grasp', GraspAction)
 
-def safe_close_gripper(fa, skip=False):
-    if skip:
-        print("  [skipped - arm only mode]")
-        return
-    try:
-        fa.close_gripper(grasp=True, block=False)
-        time.sleep(2.0)
-        print(f"  Gripper width: {fa.get_gripper_width()*100:.1f}cm")
-        print(f"  Is grasped: {fa.get_gripper_is_grasped()}")
-    except Exception as e:
-        print(f"  Gripper close failed: {e} — continuing")
+        print("  Waiting for gripper action servers...")
+        self.move_client.wait_for_server(timeout=rospy.Duration(5))
+        self.grasp_client.wait_for_server(timeout=rospy.Duration(5))
+        print("  Gripper ready!")
+
+    def open(self, width=0.08, speed=0.05):
+        """Open gripper to given width (metres)."""
+        goal = MoveGoal()
+        goal.width = width
+        goal.speed = speed
+        self.move_client.send_goal(goal)
+        self.move_client.wait_for_result(rospy.Duration(10))
+        print(f"  Gripper opened to {width*100:.1f}cm")
+
+    def close(self, width=0.045, speed=0.05, force=40.0):
+        """Close gripper to grasp object."""
+        goal = GraspGoal()
+        goal.width   = width
+        goal.speed   = speed
+        goal.force   = force
+        goal.epsilon = GraspEpsilon(inner=0.01, outer=0.01)
+        self.grasp_client.send_goal(goal)
+        self.grasp_client.wait_for_result(rospy.Duration(10))
+        result = self.grasp_client.get_result()
+        print(f"  Gripper closed — success: {result.success}")
+        return result.success
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--skip-gripper', action='store_true',
-                        help='Skip all gripper commands (arm movement only)')
-    args = parser.parse_args()
-
     print("=" * 55)
-    print("  FrankaPy Manual Test")
-    if args.skip_gripper:
-        print("  MODE: Arm only (gripper skipped)")
+    print("  FrankaPy Manual Test — Pick & Place Behind Robot")
     print("=" * 55)
 
     print("\nConnecting to FrankaArm...")
     fa = FrankaArm()
     print("Connected!")
+
+    print("\nConnecting to gripper...")
+    gripper = GripperController()
 
     # Current state
     pose = fa.get_pose()
@@ -90,56 +108,54 @@ def main():
           f"Y={pose.translation[1]:.3f}  "
           f"Z={pose.translation[2]:.3f}")
 
-    # Step 1: Home
+    # ── Step 1: Home ──────────────────────────────────────────────────
     print("\nStep 1: Going home...")
     fa.reset_joints()
     time.sleep(0.5)
-    print("  Done")
 
-    # Step 2: Open gripper
+    # ── Step 2: Open gripper ──────────────────────────────────────────
     print("\nStep 2: Opening gripper...")
-    safe_open_gripper(fa, skip=args.skip_gripper)
+    gripper.open(width=0.08)
 
-    # Step 3: Hover above can
-    print(f"\nStep 3: Moving above can ({CAN_X}, {CAN_Y}, {HOVER_Z:.3f})...")
+    # ── Step 3: Hover above can ───────────────────────────────────────
+    print(f"\nStep 3: Moving above can "
+          f"({CAN_X:.2f}, {CAN_Y:.2f}, {HOVER_Z:.3f})...")
     fa.goto_pose(make_pose(CAN_X, CAN_Y, HOVER_Z), use_impedance=False)
     time.sleep(0.5)
-    print("  Done")
 
-    # Step 4: Lower to grasp
+    # ── Step 4: Lower to grasp height ────────────────────────────────
     print(f"\nStep 4: Lowering to grasp height Z={GRASP_Z:.3f}m...")
     fa.goto_pose(make_pose(CAN_X, CAN_Y, GRASP_Z), use_impedance=False)
     time.sleep(0.5)
-    print("  Done")
 
-    # Step 5: Close gripper
-    print("\nStep 5: Closing gripper...")
-    safe_close_gripper(fa, skip=args.skip_gripper)
+    # ── Step 5: Grasp ─────────────────────────────────────────────────
+    print("\nStep 5: Grasping can...")
+    gripper.close(width=CAN_DIAMETER - 0.005, force=40.0)
+    time.sleep(0.5)
 
-    # Step 6: Lift
+    # ── Step 6: Lift ──────────────────────────────────────────────────
     print(f"\nStep 6: Lifting to Z={LIFT_Z:.3f}m...")
     fa.goto_pose(make_pose(CAN_X, CAN_Y, LIFT_Z), use_impedance=False)
     time.sleep(0.5)
-    print("  Done")
 
-    # Step 7: Move to drop
-    print(f"\nStep 7: Moving to drop ({DROP_X}, {DROP_Y}, {DROP_Z})...")
+    # ── Step 7: Move to drop (behind robot) ───────────────────────────
+    print(f"\nStep 7: Moving to drop position "
+          f"({DROP_X:.2f}, {DROP_Y:.2f}, {DROP_Z:.2f}) — behind robot...")
     fa.goto_pose(make_pose(DROP_X, DROP_Y, DROP_Z), use_impedance=False)
     time.sleep(0.5)
-    print("  Done")
 
-    # Step 8: Release
-    print("\nStep 8: Releasing...")
-    safe_open_gripper(fa, skip=args.skip_gripper)
+    # ── Step 8: Release ───────────────────────────────────────────────
+    print("\nStep 8: Releasing can...")
+    gripper.open(width=0.08)
+    time.sleep(0.5)
 
-    # Step 9: Home
+    # ── Step 9: Home ──────────────────────────────────────────────────
     print("\nStep 9: Returning home...")
     fa.reset_joints()
 
     print("\n" + "=" * 55)
-    print("  TEST COMPLETE!")
-    print("  Adjust CAN_X, CAN_Y, CAN_Z_TABLE at top of")
-    print("  script to match your actual can position.")
+    print("  COMPLETE! Can moved behind robot.")
+    print(f"  Drop was at X={DROP_X}, Y={DROP_Y}, Z={DROP_Z}")
     print("=" * 55)
 
 
