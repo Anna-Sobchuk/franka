@@ -129,8 +129,7 @@ class GripperController:
 
 class FrankaPicker:
     def __init__(self):
-        rospy.init_node('franka_can_picker')
-
+        # FrankaArm() calls rospy.init_node() internally
         rospy.loginfo("Connecting to FrankaArm...")
         self.fa = FrankaArm()
         rospy.loginfo("FrankaArm connected!")
@@ -191,8 +190,8 @@ class FrankaPicker:
             rospy.loginfo(f"Diameter={self.can_diameter*100:.1f}cm  "
                           f"Height={self.can_height*100:.1f}cm")
 
-            # ── Grasp at middle of can ──────────────────────────────────
-            grasp_z = cz + self.can_height / 2
+            # ── Grasp height — same as manual_test.py ──────────────────
+            grasp_z = self.can_height - 0.01
             hover_z = grasp_z + HOVER_ABOVE
             lift_z  = grasp_z + LIFT_ABOVE
 
