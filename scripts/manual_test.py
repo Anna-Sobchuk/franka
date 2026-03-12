@@ -150,8 +150,10 @@ def main():
 
     # ── Step 7: Rotate joint 0 to face behind robot ───────────────────
     print(f"\nStep 7: Rotating {ROTATE_BEHIND_DEG}° to face behind robot...")
-    target_pose = make_pose(-0.35, 0.0, LIFT_Z) # Directly behind
-    fa.goto_pose(target_pose, ignore_virtual_walls=True)
+    joints = list(fa.get_joints())
+    joints[0] = np.radians(ROTATE_BEHIND_DEG)
+    fa.goto_joints(joints, use_impedance=False, ignore_virtual_walls=True)
+    time.sleep(0.5)
     print(f"  Joint 0 now: {np.degrees(fa.get_joints()[0]):.1f}°")
 
     # ── Step 8: Lower to place height ────────────────────────────────
