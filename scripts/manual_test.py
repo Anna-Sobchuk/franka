@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Manual test for Franka Panda using FrankaPy + direct actionlib gripper.
-Picks can from in front of robot, rotates to safe behind-robot config,
+Picks can from in front of robot, rotates via 90deg midpoint to behind,
 lowers and places can gently on table.
 
 Run inside Docker:
@@ -28,26 +28,32 @@ CAN_DIAMETER = 0.075  # 7.5cm diameter
 GRASP_Z = CAN_Z_TABLE + CAN_HEIGHT / 2   # middle of can
 HOVER_Z = GRASP_Z + 0.15                 # above can before lowering
 LIFT_Z  = GRASP_Z + 0.30                 # high lift for safe rotation
+PLACE_Z = CAN_Z_TABLE + CAN_HEIGHT + 0.01  # 1cm above table when placing
 
-# Place height behind robot — lower can to just above table
-PLACE_Z = CAN_Z_TABLE + CAN_HEIGHT + 0.01  # 1cm above table
+# Two-step rotation — go via 90deg sideways to avoid getting stuck
+MID_JOINTS = [
+    np.radians(90),    # face sideways
+    np.radians(-45),
+    np.radians(0),
+    np.radians(-135),
+    np.radians(0),
+    np.radians(90),
+    np.radians(45),
+]
 
-# Safe joint config facing BEHIND robot (all joints, tested and working)
-# Results in pose ~ X=-0.296, Y=0.080, Z=0.487
 BEHIND_JOINTS = [
-    np.radians(165),   # joint 0 — face behind
-    np.radians(-45),   # joint 1
-    np.radians(0),     # joint 2
-    np.radians(-135),  # joint 3
-    np.radians(0),     # joint 4
-    np.radians(90),    # joint 5
-    np.radians(45),    # joint 6
+    np.radians(165),   # face behind
+    np.radians(-45),
+    np.radians(0),
+    np.radians(-135),
+    np.radians(0),
+    np.radians(90),
+    np.radians(45),
 ]
 
 # Gripper namespace
 GRIPPER_NS = '/franka_gripper_1/franka_gripper'
 
-# Gripper pointing straight down
 ROTATION_DOWN = np.array([
     [ 1,  0,  0],
     [ 0, -1,  0],
@@ -76,7 +82,6 @@ class GripperController:
             f'{GRIPPER_NS}/move', MoveAction)
         self.grasp_client = actionlib.SimpleActionClient(
             f'{GRIPPER_NS}/grasp', GraspAction)
-
         print("  Waiting for gripper action servers...")
         self.move_client.wait_for_server(timeout=rospy.Duration(5))
         self.grasp_client.wait_for_server(timeout=rospy.Duration(5))
@@ -152,9 +157,13 @@ def main():
     fa.goto_pose(make_pose(CAN_X, CAN_Y, LIFT_Z), use_impedance=False)
     time.sleep(0.5)
 
-    # ── Step 7: Move to safe behind-robot joint config ────────────────
-    # Uses full joint config (not just joint 0) to avoid getting stuck
-    print("\nStep 7: Rotating to behind-robot configuration...")
+    # ── Step 7a: Rotate to sideways midpoint (90deg) ──────────────────
+    print("\nStep 7a: Rotating to sideways midpoint (90°)...")
+    fa.goto_joints(MID_JOINTS, use_impedance=False, ignore_virtual_walls=True)
+    time.sleep(0.5)
+
+    # ── Step 7b: Rotate to behind robot (165deg) ──────────────────────
+    print("\nStep 7b: Rotating to behind robot (165°)...")
     fa.goto_joints(BEHIND_JOINTS, use_impedance=False, ignore_virtual_walls=True)
     time.sleep(0.5)
 
