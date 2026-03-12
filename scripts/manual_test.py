@@ -30,8 +30,9 @@ HOVER_Z = GRASP_Z + 0.15
 LIFT_Z  = GRASP_Z + 0.30
 PLACE_Z = CAN_HEIGHT - 0.02
 
-# Movement speed factor — reduce to prevent shaking (0.0-1.0)
-SPEED = 0.2
+# Movement durations in seconds — increase to slow down and reduce shaking
+CART_DURATION  = 6    # seconds for Cartesian moves (default 3)
+JOINT_DURATION = 8    # seconds for joint moves (default 5)
 
 # Two-step rotation — go via 90deg sideways to avoid getting stuck
 MID_JOINTS = [
@@ -82,13 +83,13 @@ def get_gripper_width():
 def goto(fa, pose):
     """Slow Cartesian move."""
     fa.goto_pose(pose, use_impedance=False, ignore_virtual_walls=True,
-                 speed_factor=SPEED)
+                 duration=CART_DURATION)
 
 
 def goto_joints(fa, joints):
     """Slow joint move."""
     fa.goto_joints(joints, use_impedance=False, ignore_virtual_walls=True,
-                   speed_factor=SPEED)
+                   duration=JOINT_DURATION)
 
 
 class GripperController:
