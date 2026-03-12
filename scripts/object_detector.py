@@ -85,7 +85,7 @@ class YOLOCanDetector:
             return
 
         frame   = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
-        results = self.model(frame, verbose=False, conf=0.3, classes=[39, 41, 44])
+        results = self.model(frame, verbose=False, conf=0.15)
 
         best    = None
         best_px = None   # pixel coords of best detection for drawing
