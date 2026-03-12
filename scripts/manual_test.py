@@ -2,7 +2,7 @@
 """
 Manual test for Franka Panda using FrankaPy + direct actionlib gripper.
 Picks can from in front of robot, rotates via 90deg midpoint to behind,
-lowers and places can gently on table.
+lowers and places can gently on table 10cm further behind robot.
 
 Run inside Docker:
   python3 ~/franka/scripts/manual_test.py
@@ -25,10 +25,13 @@ CAN_Z_TABLE  = 0.02   # table surface height above robot base
 CAN_HEIGHT   = 0.11   # can height
 CAN_DIAMETER = 0.075  # 7.5cm diameter
 
-GRASP_Z = CAN_Z_TABLE + CAN_HEIGHT
-HOVER_Z = GRASP_Z + 0.15                 # above can before lowering
-LIFT_Z  = GRASP_Z + 0.30                 # high lift for safe rotation
-PLACE_Z = CAN_HEIGHT
+GRASP_Z = CAN_HEIGHT - 0.01
+HOVER_Z = GRASP_Z + 0.15
+LIFT_Z  = GRASP_Z + 0.30
+PLACE_Z = CAN_HEIGHT - 0.02
+
+# Movement speed factor — reduce to prevent shaking (0.0-1.0)
+SPEED = 0.2
 
 # Two-step rotation — go via 90deg sideways to avoid getting stuck
 MID_JOINTS = [
@@ -74,6 +77,18 @@ def get_gripper_width():
     js = rospy.wait_for_message(
         f'{GRIPPER_NS}/joint_states', JointState, timeout=5.0)
     return sum(js.position)
+
+
+def goto(fa, pose):
+    """Slow Cartesian move."""
+    fa.goto_pose(pose, use_impedance=False, ignore_virtual_walls=True,
+                 speed_factor=SPEED)
+
+
+def goto_joints(fa, joints):
+    """Slow joint move."""
+    fa.goto_joints(joints, use_impedance=False, ignore_virtual_walls=True,
+                   speed_factor=SPEED)
 
 
 class GripperController:
@@ -139,12 +154,12 @@ def main():
 
     # ── Step 3: Hover above can ───────────────────────────────────────
     print(f"\nStep 3: Hovering above can ({CAN_X}, {CAN_Y}, {HOVER_Z:.3f})...")
-    fa.goto_pose(make_pose(CAN_X, CAN_Y, HOVER_Z), use_impedance=False)
+    goto(fa, make_pose(CAN_X, CAN_Y, HOVER_Z))
     time.sleep(0.5)
 
     # ── Step 4: Lower to grasp height ────────────────────────────────
     print(f"\nStep 4: Lowering to grasp Z={GRASP_Z:.3f}m...")
-    fa.goto_pose(make_pose(CAN_X, CAN_Y, GRASP_Z), use_impedance=False)
+    goto(fa, make_pose(CAN_X, CAN_Y, GRASP_Z))
     time.sleep(0.5)
 
     # ── Step 5: Grasp ─────────────────────────────────────────────────
@@ -154,25 +169,41 @@ def main():
 
     # ── Step 6: Lift high for safe rotation ──────────────────────────
     print(f"\nStep 6: Lifting to Z={LIFT_Z:.3f}m...")
-    fa.goto_pose(make_pose(CAN_X, CAN_Y, LIFT_Z), use_impedance=False)
+    goto(fa, make_pose(CAN_X, CAN_Y, LIFT_Z))
     time.sleep(0.5)
 
     # ── Step 7a: Rotate to sideways midpoint (90deg) ──────────────────
     print("\nStep 7a: Rotating to sideways midpoint (90°)...")
-    fa.goto_joints(MID_JOINTS, use_impedance=False, ignore_virtual_walls=True)
+    goto_joints(fa, MID_JOINTS)
     time.sleep(0.5)
 
     # ── Step 7b: Rotate to behind robot (165deg) ──────────────────────
     print("\nStep 7b: Rotating to behind robot (165°)...")
-    fa.goto_joints(BEHIND_JOINTS, use_impedance=False, ignore_virtual_walls=True)
+    goto_joints(fa, BEHIND_JOINTS)
     time.sleep(0.5)
 
     pose_after = fa.get_pose()
     print(f"  Pose after rotation: X={pose_after.translation[0]:.3f} "
           f"Y={pose_after.translation[1]:.3f} Z={pose_after.translation[2]:.3f}")
 
-    # ── Step 8: Lower can gently to table ────────────────────────────
-    print(f"\nStep 8: Lowering can to table Z={PLACE_Z:.3f}m...")
+    # ── Step 8: Move 10cm further behind robot ────────────────────────
+    print(f"\nStep 8: Moving 10cm further behind robot...")
+    current = fa.get_pose()
+    further_pose = RigidTransform(
+        rotation=current.rotation,
+        translation=np.array([
+            current.translation[0] - 0.10,  # 10cm further away from base
+            current.translation[1],
+            current.translation[2]
+        ]),
+        from_frame='franka_tool',
+        to_frame='world'
+    )
+    goto(fa, further_pose)
+    time.sleep(0.5)
+
+    # ── Step 9: Lower can gently to table ────────────────────────────
+    print(f"\nStep 9: Lowering can to table Z={PLACE_Z:.3f}m...")
     current = fa.get_pose()
     place_pose = RigidTransform(
         rotation=current.rotation,
@@ -184,16 +215,16 @@ def main():
         from_frame='franka_tool',
         to_frame='world'
     )
-    fa.goto_pose(place_pose, use_impedance=False, ignore_virtual_walls=True)
+    goto(fa, place_pose)
     time.sleep(0.5)
 
-    # ── Step 9: Open gripper slowly to place can ─────────────────────
-    print("\nStep 9: Placing can — opening gripper slowly...")
+    # ── Step 10: Open gripper slowly to release can ──────────────────
+    print("\nStep 10: Placing can — opening gripper slowly...")
     gripper.open(width=0.08, speed=0.02)
     time.sleep(0.5)
 
-    # ── Step 10: Lift straight up away from can ───────────────────────
-    print("\nStep 10: Lifting away from placed can...")
+    # ── Step 11: Lift straight up away from can ───────────────────────
+    print("\nStep 11: Lifting away from placed can...")
     current = fa.get_pose()
     retreat_pose = RigidTransform(
         rotation=current.rotation,
@@ -205,11 +236,11 @@ def main():
         from_frame='franka_tool',
         to_frame='world'
     )
-    fa.goto_pose(retreat_pose, use_impedance=False, ignore_virtual_walls=True)
+    goto(fa, retreat_pose)
     time.sleep(0.5)
 
-    # ── Step 11: Return home ──────────────────────────────────────────
-    print("\nStep 11: Returning home...")
+    # ── Step 12: Return home ──────────────────────────────────────────
+    print("\nStep 12: Returning home...")
     fa.reset_joints()
 
     print("\n" + "=" * 55)
