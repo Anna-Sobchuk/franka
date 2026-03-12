@@ -21,9 +21,9 @@ if __name__ == '__main__':
 
     # Calibrated values — measured 2026-03-12
     # Method: gripper touched can top (robot frame) vs detector point (camera frame)
-    static_transform.transform.translation.x = 0.7556
-    static_transform.transform.translation.y = 0.0796
-    static_transform.transform.translation.z = 0.7649
+    static_transform.transform.translation.x = 0.6912
+    static_transform.transform.translation.y = 0.2925
+    static_transform.transform.translation.z = 0.8286
 
     # Rotation: 180deg flip around X + 30deg tilt forward around Y
     rot_down = tft.quaternion_from_euler(math.pi, 0, 0)
@@ -39,7 +39,7 @@ if __name__ == '__main__':
 
     rospy.loginfo("=" * 60)
     rospy.loginfo("Camera TF published (calibrated):")
-    rospy.loginfo("  X=0.7556  Y=0.0796  Z=0.7649")
+    rospy.loginfo("  X=0.6912  Y=0.2925  Z=0.8286")
     rospy.loginfo("  Rotation: 180deg X flip + 30deg Y tilt")
     rospy.loginfo("=" * 60)
 
