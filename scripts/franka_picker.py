@@ -13,8 +13,6 @@ Run detector separately on HOST:
 import rospy
 import actionlib
 import numpy as np
-import tf2_ros
-import tf2_geometry_msgs
 from autolab_core import RigidTransform
 from frankapy import FrankaArm
 from franka_gripper.msg import (MoveAction, MoveGoal,
@@ -63,6 +61,14 @@ PLACE_Z = CAN_HEIGHT - 0.02   # just above table
 
 # ── Gripper namespace ─────────────────────────────────────────────────────────
 GRIPPER_NS = '/franka_gripper_1/franka_gripper'
+
+# ── Direct camera→robot mapping (no TF publisher needed) ─────────────────────
+# Learned from 4 calibration points using linear regression
+# robot_x = cx*ax + cy*bx + cz*cx_ + dx
+# robot_y = cx*ay + cy*by + cz*cy_ + dy
+CAM2ROBOT_X = [3.8520, 70.8245, 112.2034, -84.3163]   # [cx, cy, cz, 1]
+CAM2ROBOT_Y = [2.9469, 91.7978, 142.6683, -107.9270]  # [cx, cy, cz, 1]
+TABLE_Z = 0.0983  # mean table height in robot frame
 
 ROTATION_DOWN = np.array([
     [ 1,  0,  0],
@@ -139,10 +145,6 @@ class FrankaPicker:
 
         self.gripper = GripperController()
 
-        # TF for camera → robot transform
-        self.tf_buffer   = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
-
         # Can dimensions updated by detector
         self.can_height   = CAN_HEIGHT
         self.can_diameter = CAN_DIAMETER
@@ -176,19 +178,13 @@ class FrankaPicker:
         rospy.loginfo("=" * 50)
 
         try:
-            # ── Transform camera coords → robot base frame ─────────────
-            rospy.loginfo("Looking up TF transform...")
-            transform = self.tf_buffer.lookup_transform(
-                'panda_link0',
-                msg.header.frame_id,
-                rospy.Time(0),
-                rospy.Duration(5.0)
-            )
-            target = tf2_geometry_msgs.do_transform_point(msg, transform)
-            cx = target.point.x
-            cy = target.point.y
-            cz = target.point.z   # surface of can in robot frame
+            # ── Direct camera→robot mapping (no TF publisher needed) ──
+            cam_x, cam_y, cam_z = msg.point.x, msg.point.y, msg.point.z
+            cx = CAM2ROBOT_X[0]*cam_x + CAM2ROBOT_X[1]*cam_y + CAM2ROBOT_X[2]*cam_z + CAM2ROBOT_X[3]
+            cy = CAM2ROBOT_Y[0]*cam_x + CAM2ROBOT_Y[1]*cam_y + CAM2ROBOT_Y[2]*cam_z + CAM2ROBOT_Y[3]
+            cz = TABLE_Z
 
+            rospy.loginfo(f"Camera raw: X={cam_x:.3f} Y={cam_y:.3f} Z={cam_z:.3f}")
             rospy.loginfo(f"Can in robot frame: X={cx:.3f} Y={cy:.3f} Z={cz:.3f}")
             rospy.loginfo(f"Diameter={self.can_diameter*100:.1f}cm  "
                           f"Height={self.can_height*100:.1f}cm")
