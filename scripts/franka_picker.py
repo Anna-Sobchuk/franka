@@ -122,6 +122,9 @@ class GripperController:
         self.grasp_client.send_goal(goal)
         self.grasp_client.wait_for_result(rospy.Duration(10))
         result = self.grasp_client.get_result()
+        if result is None:
+            rospy.logwarn("Gripper result is None — timeout or no can present")
+            return False
         rospy.loginfo(f"Gripper closed — success:{result.success} "
                       f"width:{get_gripper_width()*100:.1f}cm")
         return result.success
