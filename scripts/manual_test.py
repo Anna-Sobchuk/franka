@@ -193,7 +193,7 @@ def main():
     further_pose = RigidTransform(
         rotation=current.rotation,
         translation=np.array([
-            current.translation[0] - 0.10,  # 10cm further away from base
+            current.translation[0], 
             current.translation[1],
             current.translation[2]
         ]),
