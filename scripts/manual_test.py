@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Manual test for Franka Panda using FrankaPy + direct actionlib gripper.
-Picks can from in front of robot, rotates 165° to place gently behind robot.
+Picks can from in front of robot, rotates to safe behind-robot config,
+lowers and places can gently on table.
 
 Run inside Docker:
   python3 ~/franka/scripts/manual_test.py
@@ -25,15 +26,23 @@ CAN_HEIGHT   = 0.12   # can height
 CAN_DIAMETER = 0.075  # 7.5cm diameter
 
 GRASP_Z = CAN_Z_TABLE + CAN_HEIGHT / 2   # middle of can
-HOVER_Z = GRASP_Z + 0.15                 # 15cm above grasp
+HOVER_Z = GRASP_Z + 0.15                 # above can before lowering
 LIFT_Z  = GRASP_Z + 0.30                 # high lift for safe rotation
 
-# After 165° rotation robot is at ~X=0.32, Y=0.38
-# Lower can to just above table surface to place gently
-PLACE_Z = CAN_Z_TABLE + CAN_HEIGHT + 0.01  # 1cm above table — resting on base
+# Place height behind robot — lower can to just above table
+PLACE_Z = CAN_Z_TABLE + CAN_HEIGHT + 0.01  # 1cm above table
 
-# Joint 0 rotation to face behind robot (tested max = 165°)
-ROTATE_BEHIND_DEG = 165.0
+# Safe joint config facing BEHIND robot (all joints, tested and working)
+# Results in pose ~ X=-0.296, Y=0.080, Z=0.487
+BEHIND_JOINTS = [
+    np.radians(165),   # joint 0 — face behind
+    np.radians(-45),   # joint 1
+    np.radians(0),     # joint 2
+    np.radians(-135),  # joint 3
+    np.radians(0),     # joint 4
+    np.radians(90),    # joint 5
+    np.radians(45),    # joint 6
+]
 
 # Gripper namespace
 GRIPPER_NS = '/franka_gripper_1/franka_gripper'
@@ -98,11 +107,6 @@ class GripperController:
         return result.success
 
 
-def goto_pose_safe(fa, pose):
-    """goto_pose with ignore_virtual_walls=True."""
-    fa.goto_pose(pose, use_impedance=False, ignore_virtual_walls=True)
-
-
 def main():
     print("=" * 55)
     print("  FrankaPy Manual Test — Pick & Place Behind Robot")
@@ -144,15 +148,14 @@ def main():
     time.sleep(0.5)
 
     # ── Step 6: Lift high for safe rotation ──────────────────────────
-    print(f"\nStep 6: Lifting to Z={LIFT_Z:.3f}m for safe rotation...")
+    print(f"\nStep 6: Lifting to Z={LIFT_Z:.3f}m...")
     fa.goto_pose(make_pose(CAN_X, CAN_Y, LIFT_Z), use_impedance=False)
     time.sleep(0.5)
 
-    # ── Step 7: Rotate joint 0 to face behind robot ───────────────────
-    print(f"\nStep 7: Rotating {ROTATE_BEHIND_DEG}° to face behind robot...")
-    joints = list(fa.get_joints())
-    joints[0] = np.radians(ROTATE_BEHIND_DEG)
-    fa.goto_joints(joints, use_impedance=False, ignore_virtual_walls=True)
+    # ── Step 7: Move to safe behind-robot joint config ────────────────
+    # Uses full joint config (not just joint 0) to avoid getting stuck
+    print("\nStep 7: Rotating to behind-robot configuration...")
+    fa.goto_joints(BEHIND_JOINTS, use_impedance=False, ignore_virtual_walls=True)
     time.sleep(0.5)
 
     pose_after = fa.get_pose()
@@ -172,16 +175,16 @@ def main():
         from_frame='franka_tool',
         to_frame='world'
     )
-    goto_pose_safe(fa, place_pose)
+    fa.goto_pose(place_pose, use_impedance=False, ignore_virtual_walls=True)
     time.sleep(0.5)
 
-    # ── Step 9: Open gripper to release can onto table ────────────────
+    # ── Step 9: Open gripper slowly to place can ─────────────────────
     print("\nStep 9: Placing can — opening gripper slowly...")
-    gripper.open(width=0.08, speed=0.02)  # slow open so can doesn't tip
+    gripper.open(width=0.08, speed=0.02)
     time.sleep(0.5)
 
     # ── Step 10: Lift straight up away from can ───────────────────────
-    print(f"\nStep 10: Lifting away from placed can...")
+    print("\nStep 10: Lifting away from placed can...")
     current = fa.get_pose()
     retreat_pose = RigidTransform(
         rotation=current.rotation,
@@ -193,7 +196,7 @@ def main():
         from_frame='franka_tool',
         to_frame='world'
     )
-    goto_pose_safe(fa, retreat_pose)
+    fa.goto_pose(retreat_pose, use_impedance=False, ignore_virtual_walls=True)
     time.sleep(0.5)
 
     # ── Step 11: Return home ──────────────────────────────────────────
