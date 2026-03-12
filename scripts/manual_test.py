@@ -22,13 +22,13 @@ import time
 CAN_X        = 0.50   # metres forward from robot base
 CAN_Y        = 0.00   # metres left(+) / right(-)
 CAN_Z_TABLE  = 0.02   # table surface height above robot base
-CAN_HEIGHT   = 0.12   # can height
+CAN_HEIGHT   = 0.13   # can height
 CAN_DIAMETER = 0.075  # 7.5cm diameter
 
-GRASP_Z = CAN_Z_TABLE + CAN_HEIGHT / 2   # middle of can
+GRASP_Z = CAN_Z_TABLE + CAN_HEIGHT
 HOVER_Z = GRASP_Z + 0.15                 # above can before lowering
 LIFT_Z  = GRASP_Z + 0.30                 # high lift for safe rotation
-PLACE_Z = CAN_Z_TABLE + CAN_HEIGHT + 0.01  # 1cm above table when placing
+PLACE_Z = CAN_Z_TABLE + CAN_HEIGHT  # 1cm above table when placing
 
 # Two-step rotation — go via 90deg sideways to avoid getting stuck
 MID_JOINTS = [
