@@ -67,7 +67,7 @@ GRIPPER_NS = '/franka_gripper_1/franka_gripper'
 # robot_x = cx*ax + cy*bx + cz*cx_ + dx
 # robot_y = cx*ay + cy*by + cz*cy_ + dy
 CAM2ROBOT_X = [0.1396, 1.6647, 0.3942, 0.0982]   # [cx, cy, cz, 1]
-CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, 0.0441]     # [cx, cy, cz, 1]
+CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, 0.0641]     # [cx, cy, cz, 1]
 TABLE_Z = 0.0983  # mean table height in robot frame
 
 ROTATION_DOWN = np.array([
@@ -266,13 +266,24 @@ class FrankaPicker:
             goto(self.fa, make_pose(cx, cy, lift_z))
             time.sleep(0.5)
 
-            # ── Step 7a: Rotate to sideways midpoint ────────────────────
-            rospy.loginfo("Step 7a: Rotating to sideways midpoint (90°)...")
-            goto_joints(self.fa, MID_JOINTS)
+            # ── Step 7a: Move to safe centered config (joint 0 = 0°) ───
+            # Same as home but lifted — always reachable from any pick position
+            SAFE_LIFTED_JOINTS = [
+                np.radians(0),
+                np.radians(-45),
+                np.radians(0),
+                np.radians(-135),
+                np.radians(0),
+                np.radians(90),
+                np.radians(45),
+            ]
+            rospy.loginfo("Step 7a: Moving to safe centered config (0°)...")
+            goto_joints(self.fa, SAFE_LIFTED_JOINTS)
             time.sleep(0.5)
 
-            # ── Step 7b: Rotate to behind robot ─────────────────────────
-            rospy.loginfo("Step 7b: Rotating to behind robot (165°)...")
+            # ── Step 7b: Rotate directly to behind robot (165°) ─────────
+            # Skip 90° midpoint — from centered config, 165° is reachable in one move
+            rospy.loginfo("Step 7b: Rotating directly to behind robot (165°)...")
             goto_joints(self.fa, BEHIND_JOINTS)
             time.sleep(0.5)
 
