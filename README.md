@@ -211,6 +211,24 @@ If the camera or tripod is moved, the coordinate mapping needs to be recalibrate
 
 ---
 
+## Project Background and Future Work
+
+This project started from the idea of building an autonomous trash-picking robot — a system that could identify litter on the ground, pick it up, and deposit it in a bin. The Franka FR3 arm and RealSense camera were chosen as a first step toward that goal, with metal cans as a representative test object. The current system demonstrates that the full perception-to-action pipeline works: the robot can find an object, localise it in 3D, grasp it reliably, and place it in a target location without any human intervention.
+
+Several directions could extend this work into a more complete trash-picking system:
+
+**Multi-object detection** — the detector currently looks for can-shaped objects. Expanding it to recognise bottles, wrappers, cups, and other common litter would require either fine-tuning YOLOv8 on a custom dataset of outdoor trash, or using a foundation model with open-vocabulary detection.
+
+**Adaptive grasping** — the gripper parameters (force, width, approach angle) are currently fixed for a standard food can. A more general system would estimate object size and shape from the depth image and adjust the grasp accordingly. For irregular objects like crumpled packaging, a different gripper geometry or a soft gripper might be needed.
+
+**Mobile base and navigation** — the arm is currently fixed to a table. Mounting it on a wheeled base with a navigation stack (ROS Nav2 or similar) would allow the robot to patrol an area, approach detected objects, pick them up, and navigate to a bin. This would require integrating the arm's pick sequence with the base's motion planner so the two do not interfere.
+
+**Bin detection** — rather than placing objects at a fixed joint configuration behind the robot, the system could use the camera to locate a bin and compute a placement pose dynamically, making it robust to bin placement changes.
+
+**Outdoor deployment** — the RealSense D435 works well indoors but struggles in direct sunlight due to IR interference. Outdoor trash picking would likely require an RGB-only detector with monocular depth estimation, or a different depth sensor such as a stereo camera or LiDAR.
+
+---
+
 ## Troubleshooting
 
 **Robot not reachable (`ping 147.250.35.11` fails)** — check the control box is powered on and the ethernet cable is connected. Open `http://147.250.35.11` in a browser to check the Franka Desk interface.
