@@ -67,7 +67,7 @@ GRIPPER_NS = '/franka_gripper_1/franka_gripper'
 # robot_x = cx*ax + cy*bx + cz*cx_ + dx
 # robot_y = cx*ay + cy*by + cz*cy_ + dy
 CAM2ROBOT_X = [0.1396, 1.6647, 0.3942, 0.0982]   # [cx, cy, cz, 1]
-CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, 0.0291]     # [cx, cy, cz, 1]
+CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, 0.0341]     # [cx, cy, cz, 1]
 TABLE_Z = 0.0983  # mean table height in robot frame
 
 ROTATION_DOWN = np.array([
@@ -219,6 +219,17 @@ class FrankaPicker:
             rospy.loginfo(f"Step 4: Lowering to grasp Z={grasp_z:.3f}m...")
             goto(self.fa, make_pose(cx, cy, grasp_z))
             time.sleep(0.5)
+
+            # Verify robot actually lowered — abort if still too high
+            actual_z = self.fa.get_pose().translation[2]
+            rospy.loginfo(f"Actual Z after lowering: {actual_z:.3f}m (target {grasp_z:.3f}m)")
+            if actual_z > grasp_z + 0.05:
+                rospy.logwarn(f"Robot did not lower to target (still at Z={actual_z:.3f}) — aborting")
+                self.gripper.open(width=0.08)
+                self.fa.reset_joints()
+                self.busy = False
+                self.done_pub.publish(Bool(data=True))
+                return
 
             # ── Step 5: Grasp ───────────────────────────────────────────
             rospy.loginfo("Step 5: Grasping can...")
