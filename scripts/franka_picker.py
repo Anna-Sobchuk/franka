@@ -189,6 +189,13 @@ class FrankaPicker:
             rospy.loginfo(f"Diameter={self.can_diameter*100:.1f}cm  "
                           f"Height={self.can_height*100:.1f}cm")
 
+            # ── Sanity check — reject unreachable positions ─────────────
+            if not (0.25 < cx < 0.80) or not (-0.40 < cy < 0.40):
+                rospy.logwarn(f"Position out of workspace (X={cx:.3f} Y={cy:.3f}) — skipping")
+                self.busy = False
+                self.done_pub.publish(Bool(data=True))
+                return
+
             # ── Grasp height — same as manual_test.py ──────────────────
             grasp_z = self.can_height - 0.01
             hover_z = grasp_z + HOVER_ABOVE
@@ -217,6 +224,17 @@ class FrankaPicker:
             rospy.loginfo("Step 5: Grasping can...")
             self.gripper.close()
             time.sleep(0.5)
+
+            # Check we actually grasped something — width > 2cm means can is there
+            gripper_w = get_gripper_width()
+            rospy.loginfo(f"Gripper width after grasp: {gripper_w*100:.1f}cm")
+            if gripper_w < 0.020:
+                rospy.logwarn("Gripper closed to 0 — missed can! Aborting.")
+                self.gripper.open(width=0.08)
+                self.fa.reset_joints()
+                self.busy = False
+                self.done_pub.publish(Bool(data=True))
+                return
 
             # ── Step 6: Lift ────────────────────────────────────────────
             rospy.loginfo(f"Step 6: Lifting to Z={lift_z:.3f}m...")
@@ -293,6 +311,7 @@ class FrankaPicker:
                 pass
         finally:
             self.busy = False
+            rospy.sleep(2.0)  # wait for arm to clear camera view before re-arming
             self.done_pub.publish(Bool(data=True))  # re-arm detector
 
 
