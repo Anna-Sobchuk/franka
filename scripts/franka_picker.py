@@ -67,7 +67,7 @@ GRIPPER_NS = '/franka_gripper_1/franka_gripper'
 # robot_x = cx*ax + cy*bx + cz*cx_ + dx
 # robot_y = cx*ay + cy*by + cz*cy_ + dy
 CAM2ROBOT_X = [0.1396, 1.6647, 0.3942, 0.0982]   # [cx, cy, cz, 1]
-CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, -0.0209]     # [cx, cy, cz, 1]
+CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, 0.0191]     # [cx, cy, cz, 1]
 TABLE_Z = 0.0983  # mean table height in robot frame
 
 ROTATION_DOWN = np.array([
@@ -287,8 +287,18 @@ class FrankaPicker:
             goto_joints(self.fa, SAFE_LIFTED_JOINTS)
             time.sleep(0.5)
 
+            # Check object still in gripper after first rotation
+            w_after_7a = get_gripper_width()
+            rospy.loginfo(f"Gripper width after 7a: {w_after_7a*100:.1f}cm")
+            if w_after_7a < 0.020:
+                rospy.logwarn("Object dropped during rotation — aborting")
+                self.fa.reset_joints()
+                self.busy = False
+                rospy.sleep(2.0)
+                self.done_pub.publish(Bool(data=True))
+                return
+
             # ── Step 7b: Rotate directly to behind robot (165°) ─────────
-            # Skip 90° midpoint — from centered config, 165° is reachable in one move
             rospy.loginfo("Step 7b: Rotating directly to behind robot (165°)...")
             goto_joints(self.fa, BEHIND_JOINTS)
             time.sleep(0.5)
