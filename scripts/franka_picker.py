@@ -67,7 +67,7 @@ GRIPPER_NS = '/franka_gripper_1/franka_gripper'
 # robot_x = cx*ax + cy*bx + cz*cx_ + dx
 # robot_y = cx*ay + cy*by + cz*cy_ + dy
 CAM2ROBOT_X = [0.1396, 1.6647, 0.3942, 0.0982]   # [cx, cy, cz, 1]
-CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, 0.0641]     # [cx, cy, cz, 1]
+CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, -0.0209]     # [cx, cy, cz, 1]
 TABLE_Z = 0.0983  # mean table height in robot frame
 
 ROTATION_DOWN = np.array([
@@ -228,11 +228,17 @@ class FrankaPicker:
             time.sleep(0.5)
 
             # ── Step 4: Lower to grasp height ───────────────────────────
-            rospy.loginfo(f"Step 4: Lowering to grasp Z={grasp_z:.3f}m...")
+            # First move to intermediate Z to avoid FrankaInterface silently
+            # rejecting large downward moves from hover
+            mid_z = (hover_z + grasp_z) / 2
+            rospy.loginfo(f"Step 4a: Lowering to mid Z={mid_z:.3f}m...")
+            goto(self.fa, make_pose(cx, cy, mid_z, tilt_deg=tilt))
+            time.sleep(0.3)
+            rospy.loginfo(f"Step 4b: Lowering to grasp Z={grasp_z:.3f}m...")
             goto(self.fa, make_pose(cx, cy, grasp_z, tilt_deg=tilt))
             time.sleep(0.5)
 
-            # Verify robot actually lowered — abort if still too high
+            # Verify robot actually reached grasp height
             actual_z = self.fa.get_pose().translation[2]
             rospy.loginfo(f"Actual Z after lowering: {actual_z:.3f}m (target {grasp_z:.3f}m)")
             if actual_z > grasp_z + 0.05:
