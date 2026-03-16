@@ -66,8 +66,8 @@ GRIPPER_NS = '/franka_gripper_1/franka_gripper'
 # Learned from 4 calibration points using linear regression
 # robot_x = cx*ax + cy*bx + cz*cx_ + dx
 # robot_y = cx*ay + cy*by + cz*cy_ + dy
-CAM2ROBOT_X = [3.8520, 70.8245, 112.2034, -84.3163]   # [cx, cy, cz, 1]
-CAM2ROBOT_Y = [2.9469, 91.7978, 142.6683, -107.9270]  # [cx, cy, cz, 1]
+CAM2ROBOT_X = [0.1396, 1.6647, 0.3942, 0.0982]   # [cx, cy, cz, 1]
+CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, 0.0291]     # [cx, cy, cz, 1]
 TABLE_Z = 0.0983  # mean table height in robot frame
 
 ROTATION_DOWN = np.array([
