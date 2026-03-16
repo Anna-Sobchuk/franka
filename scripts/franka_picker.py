@@ -67,7 +67,7 @@ GRIPPER_NS = '/franka_gripper_1/franka_gripper'
 # robot_x = cx*ax + cy*bx + cz*cx_ + dx
 # robot_y = cx*ay + cy*by + cz*cy_ + dy
 CAM2ROBOT_X = [0.1396, 1.6647, 0.3942, 0.0982]   # [cx, cy, cz, 1]
-CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, 0.0341]     # [cx, cy, cz, 1]
+CAM2ROBOT_Y = [1.0213, -0.0325, -0.1186, 0.0441]     # [cx, cy, cz, 1]
 TABLE_Z = 0.0983  # mean table height in robot frame
 
 ROTATION_DOWN = np.array([
@@ -77,9 +77,19 @@ ROTATION_DOWN = np.array([
 ], dtype=float)
 
 
-def make_pose(x, y, z):
+def make_pose(x, y, z, tilt_deg=0):
+    """Create a pose pointing down. For far reaches use tilt_deg>0 to tilt
+    the gripper slightly forward — avoids wrist singularity at extended X."""
+    if tilt_deg == 0:
+        rot = ROTATION_DOWN
+    else:
+        # Tilt forward around Y axis by tilt_deg degrees
+        angle = np.radians(tilt_deg)
+        c, s = np.cos(angle), np.sin(angle)
+        tilt = np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
+        rot = ROTATION_DOWN @ tilt
     return RigidTransform(
-        rotation=ROTATION_DOWN,
+        rotation=rot,
         translation=np.array([x, y, z]),
         from_frame='franka_tool',
         to_frame='world'
@@ -211,22 +221,25 @@ class FrankaPicker:
             self.gripper.open(width=0.08)
 
             # ── Step 3: Hover above can ─────────────────────────────────
-            rospy.loginfo(f"Step 3: Hovering above can ({cx:.3f}, {cy:.3f}, {hover_z:.3f})...")
-            goto(self.fa, make_pose(cx, cy, hover_z))
+            # Use slight forward tilt for far reaches to avoid wrist singularity
+            tilt = 10 if cx > 0.60 else 0
+            rospy.loginfo(f"Step 3: Hovering above can ({cx:.3f}, {cy:.3f}, {hover_z:.3f}) tilt={tilt}°...")
+            goto(self.fa, make_pose(cx, cy, hover_z, tilt_deg=tilt))
             time.sleep(0.5)
 
             # ── Step 4: Lower to grasp height ───────────────────────────
             rospy.loginfo(f"Step 4: Lowering to grasp Z={grasp_z:.3f}m...")
-            goto(self.fa, make_pose(cx, cy, grasp_z))
+            goto(self.fa, make_pose(cx, cy, grasp_z, tilt_deg=tilt))
             time.sleep(0.5)
 
             # Verify robot actually lowered — abort if still too high
             actual_z = self.fa.get_pose().translation[2]
             rospy.loginfo(f"Actual Z after lowering: {actual_z:.3f}m (target {grasp_z:.3f}m)")
             if actual_z > grasp_z + 0.05:
-                rospy.logwarn(f"Robot did not lower to target (still at Z={actual_z:.3f}) — aborting")
+                rospy.logwarn(f"Robot did not lower to target (still at Z={actual_z:.3f}) — going home and retrying")
                 self.gripper.open(width=0.08)
-                self.fa.reset_joints()
+                self.fa.reset_joints()   # go home so camera sees fresh scene
+                rospy.sleep(2.0)         # wait for arm to clear view
                 self.busy = False
                 self.done_pub.publish(Bool(data=True))
                 return
@@ -240,9 +253,10 @@ class FrankaPicker:
             gripper_w = get_gripper_width()
             rospy.loginfo(f"Gripper width after grasp: {gripper_w*100:.1f}cm")
             if gripper_w < 0.020:
-                rospy.logwarn("Gripper closed to 0 — missed can! Aborting.")
+                rospy.logwarn("Gripper closed to 0 — missed can! Going home and retrying.")
                 self.gripper.open(width=0.08)
-                self.fa.reset_joints()
+                self.fa.reset_joints()   # go home so camera gets fresh view
+                rospy.sleep(2.0)
                 self.busy = False
                 self.done_pub.publish(Bool(data=True))
                 return
