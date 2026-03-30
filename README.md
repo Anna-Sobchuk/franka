@@ -19,7 +19,21 @@ object_detector.py  ──►  /detected_object/point  ──►  franka_picker.
 The detector publishes a 3D point when it has seen a stable can for several frames. The picker receives the point, transforms it to robot coordinates, executes the pick-and-place sequence, then tells the detector to re-arm for the next can.
 
 ---
+## Demo Videos
 
+### Complete System Demonstration
+
+**Screen Recording - Detection & Control Flow:**
+[![Detection System Demo](https://img.youtube.com/vi/EE70g5U1DWM/maxresdefault.jpg)](https://youtu.be/EE70g5U1DWM)
+
+*Shows YOLO+Hough detection, coordinate transformation, and system integration in real-time*
+
+**Robot Action - Physical Demonstration:**
+[![Robot Pick & Place Demo](https://img.youtube.com/vi/KLRnXac3zdY/maxresdefault.jpg)](https://youtu.be/KLRnXac3zdY)
+
+*Full autonomous pick-and-place sequence: detection → grasp → transport → placement*
+
+---
 ## Hardware
 
 - **Robot:** Franka FR3, IP `147.250.35.11`
