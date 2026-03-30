@@ -1,0 +1,61 @@
+<launch>
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Franka FR3 Can Pick-and-Place — launch file
+       Robot IP: 147.250.35.11  (matches franka_picker.py and README)
+
+       Note: in the current deployment all application nodes (object_detector,
+       franka_picker, session_monitor) are started manually via python3 inside
+       Docker, following the 7-terminal procedure in the README.  This launch
+       file provides an equivalent single-command alternative for development
+       and for CI environments where Docker terminal management is inconvenient.
+
+       Usage:
+         roslaunch panda_pick_rotate pick_and_rotate.launch
+         roslaunch panda_pick_rotate pick_and_rotate.launch monitor:=false
+  ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- ── Arguments ──────────────────────────────────────────────────────── -->
+  <arg name="robot_ip"  default="147.250.35.11"/>
+  <arg name="monitor"   default="true"
+       doc="Set to false to skip the session_monitor node"/>
+
+  <!-- ── 1. RealSense Camera ─────────────────────────────────────────────
+       rs_aligned_depth.launch matches the README launch command exactly:
+         roslaunch realsense2_camera rs_aligned_depth.launch
+           enable_infra1:=false enable_infra2:=false
+           color_fps:=15 depth_fps:=15
+  ─────────────────────────────────────────────────────────────────────── -->
+  <include file="$(find realsense2_camera)/launch/rs_aligned_depth.launch">
+    <arg name="enable_infra1"  value="false"/>
+    <arg name="enable_infra2"  value="false"/>
+    <arg name="color_fps"      value="15"/>
+    <arg name="depth_fps"      value="15"/>
+  </include>
+
+  <!-- ── 2. Object Detector (YOLO + HoughCircles) ──────────────────────── -->
+  <node name="object_detector"
+        pkg="panda_pick_rotate"
+        type="object_detector.py"
+        output="screen"
+        required="true"/>
+
+  <!-- ── 3. Franka Picker (arm motion + gripper) ───────────────────────── -->
+  <node name="franka_picker"
+        pkg="panda_pick_rotate"
+        type="franka_picker.py"
+        output="screen"
+        required="true"/>
+
+  <!-- ── 4. Session Monitor (optional — enable with monitor:=true) ────────
+       Purely passive: subscribes read-only to all existing topics.
+       Adds /session_monitor/* metrics and auto-watchdog.
+       Safe to kill at any time without affecting the other nodes.
+  ─────────────────────────────────────────────────────────────────────── -->
+  <node if="$(arg monitor)"
+        name="session_monitor"
+        pkg="panda_pick_rotate"
+        type="session_monitor.py"
+        output="screen"
+        required="false"/>
+
+</launch>
